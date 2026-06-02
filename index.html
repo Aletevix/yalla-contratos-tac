@@ -989,6 +989,40 @@ document.getElementById("cep").addEventListener("input", function() {
   this.value = v;
 });
 
+document.getElementById("cep").addEventListener("blur", async function() {
+  const cep = this.value.replace(/\D/g,"");
+  if(cep.length !== 8) return;
+
+  // Visual feedback
+  this.style.borderColor = "var(--gray-400)";
+  const endField = document.getElementById("endereco");
+
+  try {
+    const resp = await fetch("https://viacep.com.br/ws/" + cep + "/json/");
+    const d = await resp.json();
+
+    if(d.erro) {
+      this.style.borderColor = "var(--red, #c0392b)";
+      toast("CEP não encontrado", "error");
+      return;
+    }
+
+    // Preenche endereço se estiver vazio
+    const partes = [d.logradouro, d.bairro, d.localidade + (d.uf ? " - " + d.uf : "")]
+      .filter(Boolean).join(", ");
+
+    if(partes && !endField.value.trim()) {
+      endField.value = partes;
+    }
+
+    this.style.borderColor = "var(--navy, #1B2D5B)";
+    toast("✓ CEP encontrado: " + d.localidade + "/" + d.uf, "info");
+
+  } catch(e) {
+    toast("Erro ao consultar CEP", "error");
+  }
+});
+
 document.getElementById("telefone").addEventListener("input", function() {
   let v = this.value.replace(/\D/g,"");
   if(v.length>0) v = "("+v;
