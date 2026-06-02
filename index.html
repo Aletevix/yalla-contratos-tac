@@ -898,8 +898,13 @@ function toast(msg, type='info') {
 
 function nomeArquivo(nome, tipo) {
   const hoje = new Date().toISOString().slice(0,10);
-  const nomeLimpo = nome.replace(/[^a-zA-ZÀ-ÿ0-9\s]/g,'').trim().replace(/\s+/g,'_');
-  return 'Yalla_' + hoje + '_TAC_' + tipo + '_' + nomeLimpo + '.docx';
+  // Normaliza: remove acentos, caracteres especiais, espaços viram underscore
+  const nomeLimpo = nome
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .replace(/[^a-zA-Z0-9\s]/g, '')                   // remove especiais
+    .trim()
+    .replace(/\s+/g, '_');
+  return 'Yalla_' + hoje + '_' + nomeLimpo + '_' + tipo + '.docx';
 }
 
 async function gerar(tipo) {
@@ -998,31 +1003,50 @@ document.getElementById("cep").addEventListener("blur", async function() {
   const endField = document.getElementById("endereco");
 
   try {
-    const resp = await fetch("https://viacep.com.br/ws/" + cep + "/json/");
-    const d = await resp.json();
+    // Tenta ViaCEP direto, com fallback para API alternativa
+    let dadosCep = null;
 
-    if(d.erro) {
+    try {
+      const resp = await fetch("https://viacep.com.br/ws/" + cep + "/json/");
+      const data = await resp.json();
+      if(!data.erro) dadosCep = data;
+    } catch(e1) {
+      // Fallback: brasilapi
+      try {
+        const resp2 = await fetch("https://brasilapi.com.br/api/cep/v1/" + cep);
+        const data2 = await resp2.json();
+        if(data2.street !== undefined) {
+          dadosCep = {
+            logradouro: data2.street,
+            bairro: data2.neighborhood,
+            localidade: data2.city,
+            uf: data2.state
+          };
+        }
+      } catch(e2) { /* ambos falharam */ }
+    }
+
+    if(!dadosCep) {
       this.style.borderColor = "var(--red, #c0392b)";
-      toast("CEP não encontrado", "error");
+      toast("CEP não encontrado ou serviço indisponível", "error");
       return;
     }
 
-    // Preenche endereço se estiver vazio
-    const partes = [d.logradouro, d.bairro, d.localidade + (d.uf ? " - " + d.uf : "")]
+    const partes = [dadosCep.logradouro, dadosCep.bairro,
+      dadosCep.localidade + (dadosCep.uf ? " - " + dadosCep.uf : "")]
       .filter(Boolean).join(", ");
 
     if(partes) {
       endField.value = partes;
-      // Força atualização no React/listeners caso existam
-      endField.dispatchEvent(new Event('input', { bubbles: true }));
+      endField.dispatchEvent(new Event("input", { bubbles: true }));
     }
 
     this.style.borderColor = "var(--navy, #1B2D5B)";
-    toast("✓ " + d.localidade + "/" + d.uf + " — endereço preenchido", "info");
+    toast("✓ " + dadosCep.localidade + "/" + dadosCep.uf + " — endereço preenchido", "info");
 
   } catch(e) {
-    console.error('ViaCEP error:', e);
-    toast("Erro ao consultar CEP. Verifique sua conexão.", "error");
+    console.error("ViaCEP error:", e);
+    toast("Erro ao consultar CEP", "error");
   }
 });
 
