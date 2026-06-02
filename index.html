@@ -838,21 +838,39 @@ function fillSdtAtIndex(xml, positions, idx, value) {
   return xml.slice(0, start) + sdt + xml.slice(end);
 }
 
-async function fillDocx(b64Template, fillMap) {
+function fillSdtCheckbox(xml, positions, idx, checked) {
+  if(idx >= positions.length) return xml;
+  const [start, end] = positions[idx];
+  let sdt = xml.slice(start, end);
+  const val = checked ? '1' : '0';
+  const char = checked ? '\u2611' : '\u2610'; // ☑ or ☐
+  sdt = sdt.replace(/(<w14:checked w14:val=")[01]("\/>)/, '$1' + val + '$2');
+  sdt = sdt.replace(/<w:t>[☐☑]<\/w:t>/, '<w:t>' + char + '</w:t>');
+  return xml.slice(0, start) + sdt + xml.slice(end);
+}
+
+async function fillDocx(b64Template, fillMap, checkboxMap) {
+  checkboxMap = checkboxMap || {};
   const JSZip = await loadJSZip();
   const buf = await b64ToArrayBuffer(b64Template);
   const zip = await JSZip.loadAsync(buf);
   
   let docXml = await zip.file('word/document.xml').async('string');
   
-  // Apply fills in reverse order
+  // Apply text fills in reverse order
   const entries = Object.entries(fillMap).map(([k,v]) => [parseInt(k), v]);
-  entries.sort((a,b) => b[0]-a[0]); // reverse order
+  entries.sort((a,b) => b[0]-a[0]);
   
   for(const [idx, value] of entries) {
     if(!value) continue;
     const positions = getSdtPositions(docXml);
     docXml = fillSdtAtIndex(docXml, positions, idx, value);
+  }
+  
+  // Apply checkbox fills
+  for(const [idx, checked] of Object.entries(checkboxMap)) {
+    const positions = getSdtPositions(docXml);
+    docXml = fillSdtCheckbox(docXml, positions, parseInt(idx), checked);
   }
   
   zip.file('word/document.xml', docXml);
@@ -927,8 +945,11 @@ async function gerar(tipo) {
       9: d.nome,
     };
     
+    const anttPossui = document.querySelector('input[name=antt]:checked').value === 'possui';
+    const parcelChecks = { 8: anttPossui, 10: !anttPossui };
+    
     if(tipo === 'parceria' || tipo === 'ambos') {
-      const buf = await fillDocx(PARCERIA_B64, parcelMap);
+      const buf = await fillDocx(PARCERIA_B64, parcelMap, parcelChecks);
       downloadBuffer(buf, nomeArquivo(d.nome, 'Parceria'));
     }
     
