@@ -1003,38 +1003,23 @@ document.getElementById("cep").addEventListener("blur", async function() {
   const endField = document.getElementById("endereco");
 
   try {
-    // Tenta ViaCEP direto, com fallback para API alternativa
-    let dadosCep = null;
+    const resp = await fetch("https://viacep.com.br/ws/" + cep + "/json/");
+    if(!resp.ok) throw new Error("HTTP " + resp.status);
+    const d = await resp.json();
 
-    try {
-      const resp = await fetch("https://viacep.com.br/ws/" + cep + "/json/");
-      const data = await resp.json();
-      if(!data.erro) dadosCep = data;
-    } catch(e1) {
-      // Fallback: brasilapi
-      try {
-        const resp2 = await fetch("https://brasilapi.com.br/api/cep/v1/" + cep);
-        const data2 = await resp2.json();
-        if(data2.street !== undefined) {
-          dadosCep = {
-            logradouro: data2.street,
-            bairro: data2.neighborhood,
-            localidade: data2.city,
-            uf: data2.state
-          };
-        }
-      } catch(e2) { /* ambos falharam */ }
-    }
-
-    if(!dadosCep) {
+    if(d.erro) {
       this.style.borderColor = "var(--red, #c0392b)";
-      toast("CEP não encontrado ou serviço indisponível", "error");
+      toast("CEP não encontrado", "error");
       return;
     }
 
-    const partes = [dadosCep.logradouro, dadosCep.bairro,
-      dadosCep.localidade + (dadosCep.uf ? " - " + dadosCep.uf : "")]
-      .filter(Boolean).join(", ");
+    // Campos: logradouro, complemento, bairro, localidade, uf
+    const partes = [
+      d.logradouro,
+      d.complemento,
+      d.bairro,
+      d.localidade + (d.uf ? " - " + d.uf : "")
+    ].filter(Boolean).join(", ");
 
     if(partes) {
       endField.value = partes;
@@ -1042,11 +1027,11 @@ document.getElementById("cep").addEventListener("blur", async function() {
     }
 
     this.style.borderColor = "var(--navy, #1B2D5B)";
-    toast("✓ " + dadosCep.localidade + "/" + dadosCep.uf + " — endereço preenchido", "info");
+    toast("✓ " + d.localidade + "/" + d.uf, "info");
 
   } catch(e) {
     console.error("ViaCEP error:", e);
-    toast("Erro ao consultar CEP", "error");
+    toast("Erro ao consultar CEP. Verifique sua conexão.", "error");
   }
 });
 
