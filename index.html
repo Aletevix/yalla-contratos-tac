@@ -1011,15 +1011,18 @@ document.getElementById("cep").addEventListener("blur", async function() {
     const partes = [d.logradouro, d.bairro, d.localidade + (d.uf ? " - " + d.uf : "")]
       .filter(Boolean).join(", ");
 
-    if(partes && !endField.value.trim()) {
+    if(partes) {
       endField.value = partes;
+      // Força atualização no React/listeners caso existam
+      endField.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
     this.style.borderColor = "var(--navy, #1B2D5B)";
-    toast("✓ CEP encontrado: " + d.localidade + "/" + d.uf, "info");
+    toast("✓ " + d.localidade + "/" + d.uf + " — endereço preenchido", "info");
 
   } catch(e) {
-    toast("Erro ao consultar CEP", "error");
+    console.error('ViaCEP error:', e);
+    toast("Erro ao consultar CEP. Verifique sua conexão.", "error");
   }
 });
 
