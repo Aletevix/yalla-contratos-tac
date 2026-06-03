@@ -382,6 +382,20 @@ select { cursor: pointer; }
 
 .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
 
+.btn-fmt {
+  background: transparent;
+  border: 1.5px solid var(--gray-200);
+  color: var(--gray-600);
+  padding: 8px 16px;
+  font-size: 0.82rem;
+}
+.btn-fmt.active {
+  background: var(--navy);
+  border-color: var(--navy);
+  color: white;
+}
+.btn-fmt:hover:not(.active) { border-color: var(--navy); color: var(--navy); }
+
 /* ── PROGRESS ── */
 #progress {
   display: none;
@@ -668,6 +682,11 @@ select { cursor: pointer; }
 
   <!-- Action Bar -->
   <div class="action-bar">
+    <div class="action-bar-title">Formato de saída</div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <button id="fmt-docx" class="btn btn-fmt active" onclick="setFormato('docx')">📝 Word (.docx)</button>
+      <button id="fmt-pdf" class="btn btn-fmt" onclick="setFormato('pdf')">📕 PDF</button>
+    </div>
     <div class="action-bar-title">Gerar documentos</div>
     <div class="action-buttons">
       <button class="btn btn-outline" onclick="gerar('parceria')">📄 Só Parceria</button>
@@ -907,6 +926,70 @@ function nomeArquivo(nome, tipo) {
   return 'Yalla_' + hoje + '_' + nomeLimpo + '_' + tipo + '.docx';
 }
 
+let formatoSaida = 'docx';
+
+function setFormato(fmt) {
+  formatoSaida = fmt;
+  document.getElementById('fmt-docx').classList.toggle('active', fmt === 'docx');
+  document.getElementById('fmt-pdf').classList.toggle('active', fmt === 'pdf');
+}
+
+async function docxToPdfBlob(docxBuffer) {
+  // Use LibreOffice via CloudConvert-free alternative: use docx-pdf via a public converter
+  // Best approach for pure JS: use docx-preview to render then print to PDF
+  // We'll use a lightweight approach: render the docx as HTML then use html2pdf
+  throw new Error('PDF via conversão não disponível — use o método nativo abaixo');
+}
+
+async function gerarPdf(docxBuffer, filename) {
+  // Method: open docx in a hidden iframe using Office Online viewer and trigger print
+  // Actually best pure-JS method: use mammoth.js to convert docx -> HTML, then html2pdf.js
+  const mammoth = await loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js', 'mammoth');
+  const html2pdf = await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js', 'html2pdf');
+
+  // Convert docx to HTML
+  const result = await window.mammoth.convertToHtml({ arrayBuffer: docxBuffer });
+  const htmlContent = result.value;
+
+  // Wrap in styled container
+  const wrapper = `
+    <!DOCTYPE html><html><head>
+    <meta charset="UTF-8">
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.5; margin: 0; padding: 0; }
+      * { box-sizing: border-box; }
+    </style>
+    </head><body>${htmlContent}</body></html>`;
+
+  // Generate PDF blob
+  const element = document.createElement('div');
+  element.innerHTML = htmlContent;
+  element.style.cssText = 'font-family:Arial,sans-serif;font-size:11pt;line-height:1.5;padding:20mm;width:210mm;';
+  document.body.appendChild(element);
+
+  const pdfFilename = filename.replace('.docx', '.pdf');
+
+  await window.html2pdf().set({
+    margin: [15, 15, 15, 15],
+    filename: pdfFilename,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2, useCORS: true },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  }).from(element).save();
+
+  document.body.removeChild(element);
+}
+
+function loadScript(src, globalName) {
+  return new Promise((resolve) => {
+    if(window[globalName]) { resolve(window[globalName]); return; }
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = () => resolve(window[globalName]);
+    document.head.appendChild(s);
+  });
+}
+
 async function gerar(tipo) {
   const d = getData();
   const errors = validate(d, tipo);
@@ -955,14 +1038,23 @@ async function gerar(tipo) {
     
     if(tipo === 'parceria' || tipo === 'ambos') {
       const buf = await fillDocx(PARCERIA_B64, parcelMap, parcelChecks);
-      downloadBuffer(buf, nomeArquivo(d.nome, 'Parceria'));
+      const fname = nomeArquivo(d.nome, 'Parceria');
+      if(formatoSaida === 'pdf') {
+        await gerarPdf(buf, fname);
+      } else {
+        downloadBuffer(buf, fname);
+      }
     }
     
     if(tipo === 'comodato' || tipo === 'ambos') {
-      // Small delay so browsers don't block double download
-      if(tipo === 'ambos') await new Promise(r => setTimeout(r, 400));
+      if(tipo === 'ambos') await new Promise(r => setTimeout(r, 600));
       const buf = await fillDocx(COMODATO_B64, comodatoMap);
-      downloadBuffer(buf, nomeArquivo(d.nome, 'Comodato'));
+      const fname = nomeArquivo(d.nome, 'Comodato');
+      if(formatoSaida === 'pdf') {
+        await gerarPdf(buf, fname);
+      } else {
+        downloadBuffer(buf, fname);
+      }
     }
     
     const label = tipo === 'ambos' ? 'Ambos os contratos gerados' : 
